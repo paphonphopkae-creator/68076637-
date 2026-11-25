@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ร้านน้ำผึ้ง</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>น้ำผึ้งดอกลำไย</h1>
+  <p>หอม หวาน เก็บใส่ขวดพร้อมส่งถึงบ้าน</p>
+</header>
+<main class="wrap">
+  <form id="form">
+    <div class="grid">
+      <div class="card">
+        <img src="images/honey-250.svg" alt="น้ำผึ้งขวด 250 กรัม">
+        <h2>ขวดเล็ก 250 กรัม</h2>
+        <p>รหัส HNY250</p>
+        <p class="price">120 บาท</p>
+        <label for="q250">จำนวน</label>
+        <input id="q250" name="HNY250" type="number" min="0" max="50" value="0">
+      </div>
+      <div class="card">
+        <img src="images/honey-500.svg" alt="น้ำผึ้งขวด 500 กรัม">
+        <h2>ขวดใหญ่ 500 กรัม</h2>
+        <p>รหัส HNY500</p>
+        <p class="price">220 บาท</p>
+        <label for="q500">จำนวน</label>
+        <input id="q500" name="HNY500" type="number" min="0" max="50" value="0">
+      </div>
+    </div>
+    <div class="card">
+      <h2>ที่อยู่จัดส่ง (เก็บเงินปลายทาง)</h2>
+      <label>ชื่อ-นามสกุล<input name="name" required></label>
+      <label>เบอร์โทร<input name="phone" required inputmode="numeric" pattern="0[0-9]{8,9}" title="ตัวเลข 9-10 หลัก ขึ้นต้นด้วย 0"></label>
+      <label>บ้านเลขที่ หมู่ ซอย ถนน<textarea name="address" required></textarea></label>
+      <label>ตำบล/แขวง<input name="subdistrict" required></label>
+      <label>อำเภอ/เขต<input name="district" required></label>
+      <label>จังหวัด<input name="province" required></label>
+      <label>รหัสไปรษณีย์<input name="zipcode" required inputmode="numeric" pattern="[0-9]{5}" title="ตัวเลข 5 หลัก"></label>
+      <div id="total">ยอดรวม 0 บาท</div>
+      <button id="submit">สั่งซื้อ</button>
+      <p id="msg" role="status"></p>
+    </div>
+  </form>
+</main>
+<script src="config.js"></script>
+<script>
+const form = document.getElementById('form');
+const msg = document.getElementById('msg');
+const btn = document.getElementById('submit');
+function total() {
+  return form.HNY250.value * 120 + form.HNY500.value * 220;
+}
+form.addEventListener('input', () => {
+  document.getElementById('total').textContent = 'ยอดรวม ' + total() + ' บาท';
+});
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (total() <= 0) { msg.textContent = 'กรุณาเลือกสินค้าอย่างน้อย 1 ขวด'; return; }
+  if (!SCRIPT_URL) { msg.textContent = 'ยังไม่ได้ใส่ SCRIPT_URL ใน config.js'; return; }
+  btn.disabled = true;
+  msg.textContent = 'กำลังส่งคำสั่งซื้อ...';
+  try {
+    const data = Object.fromEntries(new FormData(form));
+    data.action = 'order';
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(data) });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error);
+    form.reset();
+    document.getElementById('total').textContent = 'ยอดรวม 0 บาท';
+    msg.textContent = 'สั่งซื้อสำเร็จ เลขที่ ' + out.id + ' ยอดชำระ ' + out.total + ' บาท';
+  } catch (err) {
+    msg.textContent = 'ส่งไม่สำเร็จ: ' + err.message;
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

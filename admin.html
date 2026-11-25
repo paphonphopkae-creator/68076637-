@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>จัดการออเดอร์น้ำผึ้ง</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="noprint">
+    <h1>จัดการออเดอร์</h1>
+    <input id="key" type="password" placeholder="รหัสผู้ดูแล">
+    <button id="load">โหลดข้อมูล</button>
+    <p id="msg" role="status"></p>
+    <button data-tab="pick">1. หยิบสินค้า</button>
+    <button data-tab="pack">2. แพ็คสินค้า</button>
+    <button data-tab="ship">3. จ่าหน้าพัสดุ</button>
+  </div>
+  <div id="view"></div>
+</main>
+<script src="config.js"></script>
+<script>
+const NAMES = { HNY250: 'น้ำผึ้ง 250 กรัม', HNY500: 'น้ำผึ้ง 500 กรัม' };
+const view = document.getElementById('view');
+const msg = document.getElementById('msg');
+let orders = [], shop = {}, tab = 'pick';
+
+// ป้องกันข้อความจากลูกค้าถูกรันเป็นโค้ด
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const itemsText = o => Object.keys(NAMES).filter(k => o[k] > 0).map(k => `${k} ${NAMES[k]} x ${o[k]}`);
+
+async function api(body) {
+  if (!SCRIPT_URL) throw new Error('ยังไม่ได้ใส่ SCRIPT_URL ใน config.js');
+  body.key = document.getElementById('key').value;
+  const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+  const out = await res.json();
+  if (!out.ok) throw new Error(out.error);
+  return out;
+}
+
+async function load() {
+  msg.textContent = 'กำลังโหลด...';
+  try {
+    const out = await api({ action: 'list' });
+    orders = out.orders; shop = out.shop;
+    msg.textContent = 'ออเดอร์ทั้งหมด ' + orders.length + ' รายการ';
+    render();
+  } catch (e) { msg.textContent = 'ผิดพลาด: ' + e.message; }
+}
+
+async function setStatus(ids, status) {
+  msg.textContent = 'กำลังบันทึก...';
+  try { await api({ action: 'status', ids, status }); await load(); }
+  catch (e) { msg.textContent = 'ผิดพลาด: ' + e.message; }
+}
+
+function render() {
+  const wanted = { pick: 'ใหม่', pack: 'หยิบแล้ว', ship: 'แพ็คแล้ว' }[tab];
+  const list = orders.filter(o => o.status === wanted);
+  if (!list.length) { view.innerHTML = `<p class="card">ไม่มีออเดอร์สถานะ "${wanted}"</p>`; return; }
+
+  if (tab === 'pick') {
+    const rows = Object.keys(NAMES).map(k =>
+      `<tr><td>${k}</td><td>${NAMES[k]}</td><td>${list.reduce((s, o) => s + Number(o[k]), 0)}</td></tr>`).join('');
+    view.innerHTML = `<div class="card"><h2>ใบหยิบสินค้า (${list.length} ออเดอร์)</h2>
+      <table><tr><th>SKU</th><th>สินค้า</th><th>จำนวนรวม</th></tr>${rows}</table>
+      <p>${list.map(o => esc(o.id)).join(', ')}</p></div>
+      <button class="noprint" onclick="window.print()">พิมพ์ใบหยิบ</button>
+      <button class="noprint" id="done">หยิบครบแล้ว</button>`;
+    document.getElementById('done').onclick = () => setStatus(list.map(o => o.id), 'หยิบแล้ว');
+  }
+
+  if (tab === 'pack') {
+    view.innerHTML = list.map(o => `<div class="card" data-id="${esc(o.id)}">
+      <h3>${esc(o.id)} : ${esc(o.name)}</h3>
+      ${itemsText(o).map(t => `<label><input type="checkbox">${t}</label>`).join('')}
+      <button disabled>แพ็คเรียบร้อย</button></div>`).join('');
+    view.querySelectorAll('.card').forEach(card => {
+      const boxes = [...card.querySelectorAll('input')], b = card.querySelector('button');
+      card.onchange = () => b.disabled = !boxes.every(x => x.checked);
+      b.onclick = () => setStatus([card.dataset.id], 'แพ็คแล้ว');
+    });
+  }
+
+  if (tab === 'ship') {
+    view.innerHTML = list.map(o => {
+      const bkk = /กรุงเทพ|กทม/.test(o.province);
+      return `<div class="label">
+        <div><b>ผู้ส่ง</b> ${esc(shop.name)}<br>${esc(shop.address)}<br>โทร ${esc(shop.phone)}</div>
+        <div class="to"><b>ผู้รับ</b> ${esc(o.name)}<br>${esc(o.address)}<br>
+        ${bkk ? 'แขวง' : 'ต.'}${esc(o.subdistrict)} ${bkk ? 'เขต' : 'อ.'}${esc(o.district)}<br>
+        ${bkk ? '' : 'จ.'}${esc(o.province)} <b>${esc(o.zipcode)}</b><br>โทร ${esc(o.phone)}</div>
+        <p>${esc(o.id)} | ${itemsText(o).join(', ')}<br><b>เก็บเงินปลายทาง ${esc(o.total)} บาท</b></p></div>`;
+    }).join('') + `<button class="noprint" onclick="window.print()">พิมพ์จ่าหน้า</button>
+      <button class="noprint" id="sent">ส่งแล้วทั้งหมด</button>`;
+    document.getElementById('sent').onclick = () => setStatus(list.map(o => o.id), 'ส่งแล้ว');
+  }
+}
+
+document.getElementById('load').onclick = load;
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+</script>
+</body>
+</html>
